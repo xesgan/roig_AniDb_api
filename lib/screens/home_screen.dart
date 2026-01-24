@@ -20,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final p = context.read<AniDbProvider>();
       await p.fetchRandomRecommendationList();
       await p.fetchHotAnime();
+      await p.fetchRandomSimilar();
     });
   }
 

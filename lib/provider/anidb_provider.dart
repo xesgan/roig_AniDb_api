@@ -15,6 +15,7 @@ class AniDbProvider extends ChangeNotifier {
 
   List<AnimePreview> randomList = [];
   List<AnimePreview> hotList = [];
+  List<SimilarPair> similarPairs = [];
 
   // ===== State =====
   bool isLoading = false;
@@ -103,55 +104,7 @@ class AniDbProvider extends ChangeNotifier {
     }
   }
 
-  List<AnimePreview> parseHotAnime(XmlDocument doc) {
-    final list = <AnimePreview>[];
-
-    for (final a in doc.rootElement.findElements('anime')) {
-      final id = int.tryParse(a.getAttribute('id') ?? '');
-      if (id == null) continue;
-
-      final restricted =
-          (a.getAttribute('restricted') ?? 'false').toLowerCase() == 'true';
-
-      String? textOf(String tag) {
-        final el = a.findElements(tag);
-        if (el.isEmpty) return null;
-        final t = el.first.innerText.trim();
-        return t.isEmpty ? null : t;
-      }
-
-      final title = textOf('title');
-      final picture = textOf('picture');
-      final episodeCount = int.tryParse(textOf('episodecount') ?? '');
-      final startDate = DateTime.tryParse(textOf('startdate') ?? '');
-
-      // ratings/permanent y ratings/temporary
-      double? ratingOf(String tag) {
-        final ratings = a.findElements('ratings');
-        if (ratings.isEmpty) return null;
-        final el = ratings.first.findElements(tag);
-        if (el.isEmpty) return null;
-        return double.tryParse(el.first.innerText.trim());
-      }
-
-      list.add(
-        AnimePreview(
-          id: id,
-          restricted: restricted,
-          title: title,
-          picture: picture,
-          episodeCount: episodeCount,
-          startDate: startDate,
-          permanentRating: ratingOf('permanent'),
-          temporaryRating: ratingOf('temporary'),
-        ),
-      );
-    }
-
-    return list;
-  }
-
-  /// Carga un anime por id (aid).
+  // Carga un anime por id (aid).
   Future<Anime?> fetchAnime(int aid, {bool force = false}) async {
     errorMessage = null;
 
@@ -198,6 +151,48 @@ class AniDbProvider extends ChangeNotifier {
     } catch (e) {
       errorMessage = e.toString();
       return null;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchRandomSimilar() async {
+    errorMessage = null;
+    await _throttle(); // <- tu throttle de 2 segundos
+
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      final uri = Uri(
+        scheme: 'http',
+        host: 'api.anidb.net',
+        port: 9001,
+        path: '/httpapi',
+        queryParameters: {
+          'client': client.toLowerCase(),
+          'clientver': clientVer.toString(),
+          'protover': '1',
+          'request': 'randomsimilar',
+        },
+      );
+
+      final res = await http.get(
+        uri,
+        headers: const {'Accept-Encoding': 'gzip'},
+      );
+
+      if (res.statusCode != 200) {
+        throw Exception('HTTP ${res.statusCode}: ${res.body}');
+      }
+
+      final xmlStr = utf8.decode(res.bodyBytes);
+      final doc = XmlDocument.parse(xmlStr);
+
+      similarPairs = _parseRandomSimilar(doc);
+    } catch (e) {
+      errorMessage = e.toString();
     } finally {
       isLoading = false;
       notifyListeners();
@@ -306,127 +301,198 @@ class AniDbProvider extends ChangeNotifier {
     return list;
   }
 
-  Anime _parseAnime(XmlDocument doc) {
-    final root = doc.findAllElements('anime').first;
+  List<AnimePreview> parseHotAnime(XmlDocument doc) {
+    final list = <AnimePreview>[];
 
-    final id = root.getAttribute('id') ?? '';
-    final restricted =
-        (root.getAttribute('restricted') ?? 'false').toLowerCase() == 'true';
+    for (final a in doc.rootElement.findElements('anime')) {
+      final id = int.tryParse(a.getAttribute('id') ?? '');
+      if (id == null) continue;
+
+      final restricted =
+          (a.getAttribute('restricted') ?? 'false').toLowerCase() == 'true';
+
+      String? textOf(String tag) {
+        final el = a.findElements(tag);
+        if (el.isEmpty) return null;
+        final t = el.first.innerText.trim();
+        return t.isEmpty ? null : t;
+      }
+
+      final title = textOf('title');
+      final picture = textOf('picture');
+      final episodeCount = int.tryParse(textOf('episodecount') ?? '');
+      final startDate = DateTime.tryParse(textOf('startdate') ?? '');
+
+      // ratings/permanent y ratings/temporary
+      double? ratingOf(String tag) {
+        final ratings = a.findElements('ratings');
+        if (ratings.isEmpty) return null;
+        final el = ratings.first.findElements(tag);
+        if (el.isEmpty) return null;
+        return double.tryParse(el.first.innerText.trim());
+      }
+
+      list.add(
+        AnimePreview(
+          id: id,
+          restricted: restricted,
+          title: title,
+          picture: picture,
+          episodeCount: episodeCount,
+          startDate: startDate,
+          permanentRating: ratingOf('permanent'),
+          temporaryRating: ratingOf('temporary'),
+        ),
+      );
+    }
+
+    return list;
+  }
+
+  Anime _parseAnime(XmlDocument doc) {
+    final root = doc.rootElement;
 
     String? textOf(String tag) {
-      final el = root.findElements(tag);
-      if (el.isEmpty) return null;
-      final txt = el.first.innerText.trim();
-      return txt.isEmpty ? null : txt;
+      final el = root.getElement(tag);
+      if (el == null) return null;
+      final t = el.innerText.trim();
+      return t.isEmpty ? null : t;
     }
 
-    int? intOf(String tag) {
-      final v = textOf(tag);
-      return v == null ? null : int.tryParse(v);
+    bool parseBool(String? v) =>
+        v != null && (v.toLowerCase() == 'true' || v == '1');
+
+    DateTime? parseDate(String? v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v);
     }
 
-    DateTime? dateOf(String tag) {
-      final v = textOf(tag);
-      return v == null ? null : DateTime.tryParse(v);
+    int? parseInt(String? v) {
+      if (v == null) return null;
+      return int.tryParse(v);
     }
 
-    // Titles
+    // --- titles ---
     final titles = <AnimeTitle>[];
-    final titlesEl = root.findElements('titles');
-    if (titlesEl.isNotEmpty) {
-      for (final t in titlesEl.first.findElements('title')) {
+    final titlesEl = root.getElement('titles');
+    if (titlesEl != null) {
+      for (final t in titlesEl.findElements('title')) {
         titles.add(
           AnimeTitle(
-            text: t.innerText.trim(),
             lang: t.getAttribute('xml:lang'),
             type: t.getAttribute('type'),
+            text: t.innerText.trim(),
+          ),
+        );
+      }
+    } else {
+      for (final t in root.findElements('title')) {
+        titles.add(
+          AnimeTitle(
+            lang: t.getAttribute('xml:lang'),
+            type: t.getAttribute('type'),
+            text: t.innerText.trim(),
           ),
         );
       }
     }
 
-    // Related
-    final related = <AnimeRelation>[];
-    final relatedEl = root.findElements('relatedanime');
-    if (relatedEl.isNotEmpty) {
-      for (final a in relatedEl.first.findElements('anime')) {
-        related.add(
+    // --- related / similar ---
+    List<AnimeRelation> parseRelations(String tag) {
+      final out = <AnimeRelation>[];
+      final el = root.getElement(tag);
+      if (el == null) return out;
+      for (final a in el.findElements('anime')) {
+        out.add(
           AnimeRelation(
             id: a.getAttribute('id') ?? '',
-            relationType: a.getAttribute('type'),
-            title: a.innerText.trim().isEmpty ? null : a.innerText.trim(),
+            // type: a.getAttribute('type'),
+            title: a.innerText.trim(),
           ),
         );
       }
+      return out;
     }
 
-    // Similar
-    final similar = <AnimeRelation>[];
-    final similarEl = root.findElements('similaranime');
-    if (similarEl.isNotEmpty) {
-      for (final a in similarEl.first.findElements('anime')) {
-        similar.add(
-          AnimeRelation(
-            id: a.getAttribute('id') ?? '',
-            relationType: 'Similar',
-            title: a.innerText.trim().isEmpty ? null : a.innerText.trim(),
-          ),
-        );
-      }
-    }
-
-    // Creators
+    // --- creators ---
     final creators = <Creator>[];
-    final creatorsEl = root.findElements('creators');
-    if (creatorsEl.isNotEmpty) {
-      for (final n in creatorsEl.first.findElements('name')) {
+    final creatorsEl = root.getElement('creators');
+    if (creatorsEl != null) {
+      for (final n in creatorsEl.findElements('name')) {
         creators.add(
-          Creator(name: n.innerText.trim(), type: n.getAttribute('type')),
+          Creator(type: n.getAttribute('type'), name: n.innerText.trim()),
         );
       }
     }
 
-    // Recommendations
+    // --- recommendations ---
     final recs = <AnimeRecommendation>[];
-    final recsEl = root.findElements('recommendations');
+    final recsEl = root.getElement('recommendations');
 
-    if (recsEl.isNotEmpty) {
-      for (final r in recsEl.first.findElements('recommendation')) {
-        final aidStr = r.getAttribute('aid');
-        final aid = int.tryParse(aidStr ?? '');
-        if (aid == null) continue;
+    if (recsEl != null) {
+      final aidStr = root.getAttribute('id');
+      final aid = int.tryParse(aidStr ?? '');
 
-        final content = r.innerText.trim();
-        if (content.isEmpty) continue;
+      if (aid != null) {
+        for (final r in recsEl.findElements('recommendation')) {
+          final txt = r.innerText.trim();
+          if (txt.isEmpty) continue;
 
-        recs.add(
-          AnimeRecommendation(
-            aid: aid,
-            text: content,
-            type: r.getAttribute('type'),
-          ),
-        );
+          recs.add(
+            AnimeRecommendation(
+              aid: aid,
+              text: txt,
+              type: r.getAttribute('type'),
+            ),
+          );
+        }
       }
     }
-
-    // URL a veces viene con espacios tipo "http: //"
-    final rawUrl = textOf('url');
-    final cleanedUrl = rawUrl?.replaceAll(' ', '');
 
     return Anime(
-      id: id,
-      restricted: restricted,
+      id: root.getAttribute('id') ?? '',
+      restricted: parseBool(root.getAttribute('restricted')),
       type: textOf('type'),
-      episodeCount: intOf('episodecount'),
-      startDate: dateOf('startdate'),
-      endDate: dateOf('enddate'),
+      episodeCount: parseInt(textOf('episodecount')),
+      startDate: parseDate(textOf('startdate')),
+      endDate: parseDate(textOf('enddate')),
       titles: titles,
-      relatedAnime: related,
-      similarAnime: similar,
-      url: cleanedUrl,
+      relatedAnime: parseRelations('relatedanime'),
+      similarAnime: parseRelations('similaranime'),
+      url: textOf('url'),
       creators: creators,
       description: textOf('description'),
       recommendations: recs,
     );
   }
+}
+
+List<SimilarPair> _parseRandomSimilar(XmlDocument doc) {
+  final list = <SimilarPair>[];
+
+  final root = doc.rootElement; // <randomsimilar>
+  for (final sim in root.findElements('similar')) {
+    final srcEl = sim.getElement('source');
+    final tgtEl = sim.getElement('target');
+    if (srcEl == null || tgtEl == null) continue;
+
+    SimilarImageItem? parseItem(XmlElement el) {
+      final aidStr = el.getAttribute('aid');
+      final pic = el.getElement('picture')?.innerText.trim();
+      if (aidStr == null || pic == null || pic.isEmpty) return null;
+
+      final aid = int.tryParse(aidStr);
+      if (aid == null) return null;
+
+      return SimilarImageItem(aid: aid, picture: pic);
+    }
+
+    final src = parseItem(srcEl);
+    final tgt = parseItem(tgtEl);
+    if (src == null || tgt == null) continue;
+
+    list.add(SimilarPair(source: src, target: tgt));
+  }
+
+  return list;
 }

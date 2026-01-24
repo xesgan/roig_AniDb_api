@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:roig_spaceflight_api/models/models.dart';
+import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
+import 'package:roig_spaceflight_api/widgets/widgets.dart';
 // import 'package:roig_spaceflight_api/widgets/casting_cards.dart';
 
 class DetailsScreen extends StatelessWidget {
@@ -18,6 +21,7 @@ class DetailsScreen extends StatelessWidget {
     }
 
     final AnimePreview item = args;
+    final p = context.watch<AniDbProvider>();
 
     return Scaffold(
       body: CustomScrollView(
@@ -26,9 +30,12 @@ class DetailsScreen extends StatelessWidget {
           SliverList(
             delegate: SliverChildListDelegate([
               _PosterAndTitle(item: item),
-              _Overview(item: item),
+              _Overview(aid: item.id),
               const SizedBox(height: 20),
-              // CastingCards(), // <-- adaptarlo si lo quieres para AniDB
+
+              CastingCards(
+                pairs: p.similarPairs,
+              ), // <-- adaptarlo si lo quieres para AniDB
             ]),
           ),
         ],
@@ -154,20 +161,84 @@ class _PosterAndTitle extends StatelessWidget {
 }
 
 class _Overview extends StatelessWidget {
-  final AnimePreview item;
-  const _Overview({Key? key, required this.item}) : super(key: key);
+  final int aid;
+  const _Overview({Key? key, required this.aid}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // AnimePreview de "hotanime" NO trae descripción. Ponemos texto placeholder.
-    return Container(
+    final provider = context.watch<AniDbProvider>();
+    final anime = provider.getFromCache(aid);
+
+    final desc = anime?.description;
+
+    // Si ya tenemos descripción → la mostramos
+    if (desc != null && desc.trim().isNotEmpty) {
+      return _OverviewBody(text: desc);
+    }
+
+    // Si no, pedimos el detalle
+    return FutureBuilder(
+      future: context.read<AniDbProvider>().fetchAnime(aid),
+      builder: (context, snapshot) {
+        final animeNow = context.watch<AniDbProvider>().getFromCache(aid);
+        final d = animeNow?.description;
+
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            (d == null || d.isEmpty)) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (provider.errorMessage != null && (d == null || d.isEmpty)) {
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              provider.errorMessage!,
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        return _OverviewBody(text: d ?? 'No hay descripción disponible.');
+      },
+    );
+  }
+}
+
+class _OverviewBody extends StatelessWidget {
+  final String text;
+  const _OverviewBody({Key? key, required this.text}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final cleaned = cleanDescription(text);
+
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Text(
-        'Este item viene del endpoint hotanime y no incluye descripción.\n'
-        'Si quieres descripción real, hay que pedir el detalle por aid=${item.id} (request=anime).',
-        textAlign: TextAlign.justify,
-        style: Theme.of(context).textTheme.titleMedium,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Overview', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Text(
+            cleaned,
+            textAlign: TextAlign.justify,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(height: 1.45),
+          ),
+        ],
       ),
     );
   }
+}
+
+String cleanDescription(String raw) {
+  return raw
+      .replaceAll(RegExp(r'\*+'), '') // quita asteriscos
+      .replaceAll(RegExp(r'\s+\n'), '\n') // limpia saltos
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n') // máx 2 saltos
+      .trim();
 }
