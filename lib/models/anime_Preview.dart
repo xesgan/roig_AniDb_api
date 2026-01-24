@@ -7,7 +7,8 @@ class AnimePreview {
   final DateTime? endDate;
   final String? title;
   final String? picture;
-  final int? permanentRating;
+  final double? permanentRating;
+  final double? temporaryRating;
   final int? recommendationsCount;
 
   AnimePreview({
@@ -20,6 +21,7 @@ class AnimePreview {
     this.title,
     this.picture,
     this.permanentRating,
+    this.temporaryRating,
     this.recommendationsCount,
   });
 
@@ -29,5 +31,12 @@ class AnimePreview {
       return 'https://i.stack.imgur.com/GNhxO.png';
     }
     return 'https://cdn.anidb.net/images/main/$picture';
+  }
+
+  String get animeTitle {
+    if (title == null) {
+      return 'Titulo no available';
+    }
+    return title.toString();
   }
 }

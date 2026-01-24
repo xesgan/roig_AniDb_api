@@ -14,6 +14,7 @@ class AniDbProvider extends ChangeNotifier {
   AniDbProvider({required this.client, required this.clientVer});
 
   List<AnimePreview> randomList = [];
+  List<AnimePreview> hotList = [];
 
   // ===== State =====
   bool isLoading = false;
@@ -26,7 +27,7 @@ class AniDbProvider extends ChangeNotifier {
   // Para no spamear AniDB (mínimo 2s entre requests)
   DateTime _lastRequestAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  // Carga una lista de animes (id)
+  // Carga una lista de animes recomendados aleatoriamente(id)
   Future<void> fetchRandomRecommendationList() async {
     isLoadingList = true;
     errorMessage = null;
@@ -62,6 +63,92 @@ class AniDbProvider extends ChangeNotifier {
       isLoadingList = false;
       notifyListeners();
     }
+  }
+
+  // Carga una lista de los animes mas vistos temporalmente
+  Future<void> fetchHotAnime() async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+
+    try {
+      final uri = Uri(
+        scheme: 'http',
+        host: 'api.anidb.net',
+        port: 9001,
+        path: '/httpapi',
+        queryParameters: {
+          'request': 'hotanime',
+          'client': client,
+          'clientver': clientVer.toString(),
+          'protover': '1',
+        },
+      );
+
+      final res = await http.get(uri);
+
+      if (res.statusCode != 200) {
+        throw Exception('HTTP ${res.statusCode}');
+      }
+
+      final xmlStr = utf8.decode(res.bodyBytes);
+      final doc = XmlDocument.parse(xmlStr);
+
+      hotList = parseHotAnime(doc);
+    } catch (e) {
+      errorMessage = e.toString();
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  List<AnimePreview> parseHotAnime(XmlDocument doc) {
+    final list = <AnimePreview>[];
+
+    for (final a in doc.rootElement.findElements('anime')) {
+      final id = int.tryParse(a.getAttribute('id') ?? '');
+      if (id == null) continue;
+
+      final restricted =
+          (a.getAttribute('restricted') ?? 'false').toLowerCase() == 'true';
+
+      String? textOf(String tag) {
+        final el = a.findElements(tag);
+        if (el.isEmpty) return null;
+        final t = el.first.innerText.trim();
+        return t.isEmpty ? null : t;
+      }
+
+      final title = textOf('title');
+      final picture = textOf('picture');
+      final episodeCount = int.tryParse(textOf('episodecount') ?? '');
+      final startDate = DateTime.tryParse(textOf('startdate') ?? '');
+
+      // ratings/permanent y ratings/temporary
+      double? ratingOf(String tag) {
+        final ratings = a.findElements('ratings');
+        if (ratings.isEmpty) return null;
+        final el = ratings.first.findElements(tag);
+        if (el.isEmpty) return null;
+        return double.tryParse(el.first.innerText.trim());
+      }
+
+      list.add(
+        AnimePreview(
+          id: id,
+          restricted: restricted,
+          title: title,
+          picture: picture,
+          episodeCount: episodeCount,
+          startDate: startDate,
+          permanentRating: ratingOf('permanent'),
+          temporaryRating: ratingOf('temporary'),
+        ),
+      );
+    }
+
+    return list;
   }
 
   /// Carga un anime por id (aid).
@@ -183,7 +270,7 @@ class AniDbProvider extends ChangeNotifier {
       final title = titleEl?.innerText.trim();
 
       // ratings/permanent y ratings/recommendations
-      int? permanent;
+      double? permanent;
       int? recCount;
       final ratingsEl = anime.findElements('ratings');
       if (ratingsEl.isNotEmpty) {
@@ -191,7 +278,7 @@ class AniDbProvider extends ChangeNotifier {
 
         final permEl = r.findElements('permanent');
         if (permEl.isNotEmpty) {
-          permanent = int.tryParse(permEl.first.innerText.trim());
+          permanent = double.tryParse(permEl.first.innerText.trim());
         }
 
         final recEl = r.findElements('recommendations');

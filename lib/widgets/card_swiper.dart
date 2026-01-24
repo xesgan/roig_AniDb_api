@@ -52,7 +52,7 @@ class _AnimePosterCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         context.read<AniDbProvider>().fetchAnime(preview.id);
-        Navigator.pushNamed(context, 'details', arguments: preview.id);
+        Navigator.pushNamed(context, 'details', arguments: preview);
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),

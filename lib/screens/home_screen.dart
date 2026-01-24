@@ -12,12 +12,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   @override
+  @override
   void initState() {
     super.initState();
 
-    // Llamamos una sola vez
-    Future.microtask(() {
-      context.read<AniDbProvider>().fetchRandomRecommendationList();
+    Future.microtask(() async {
+      final p = context.read<AniDbProvider>();
+      await p.fetchRandomRecommendationList();
+      await p.fetchHotAnime();
     });
   }
 
@@ -56,7 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 const SizedBox(height: 10),
 
-                SizedBox(height: 220, child: MovieSlider()),
+                SizedBox(height: 270, child: MovieSlider(items: p.hotList)),
 
                 const SizedBox(height: 20),
               ],
