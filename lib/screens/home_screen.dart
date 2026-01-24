@@ -1,37 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:roig_spaceflight_api/provider/articles_provider.dart';
-import 'package:roig_spaceflight_api/widgets/card_swiper.dart';
-import 'package:roig_spaceflight_api/widgets/movie_slider.dart';
+import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
+import 'package:roig_spaceflight_api/widgets/widgets.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    // Llamamos una sola vez
+    Future.microtask(() {
+      context.read<AniDbProvider>().fetchRandomRecommendationList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final articleProvider = Provider.of<ArticlesProvider>(context);
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Space Flights News'),
+        title: const Text('AniDB'),
         elevation: 0,
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.search_outlined)),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Container(
-          child: Column(
-            children: [
-              // Targetes principals
-              CardSwiper(articles: articleProvider.featuredArticles),
+      body: Consumer<AniDbProvider>(
+        builder: (_, p, _) {
+          if (p.isLoadingList) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (p.errorMessage != null) {
+            return Center(
+              child: Text(
+                p.errorMessage!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            );
+          }
 
-              // Slider de pel·licules
-              MovieSlider(articles: articleProvider.noFeaturedArticles),
-              // Poodeu fer la prova d'afegir-ne uns quants, veureu com cada llista és independent
-              // MovieSlider(),
-              // MovieSlider(),
-            ],
-          ),
-        ),
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.60,
+                  child: CardSwiper(items: p.randomList),
+                ),
+
+                const SizedBox(height: 10),
+
+                SizedBox(height: 220, child: MovieSlider()),
+
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

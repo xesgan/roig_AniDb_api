@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:roig_spaceflight_api/provider/articles_provider.dart';
+import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
 import 'package:roig_spaceflight_api/screens/details_screen.dart';
 import 'package:roig_spaceflight_api/screens/home_screen.dart';
 
@@ -13,7 +13,10 @@ class AppState extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ArticlesProvider(), lazy: false),
+        ChangeNotifierProvider(
+          create: (_) => AniDbProvider(client: 'flutterapidam', clientVer: 1),
+          lazy: false,
+        ),
       ],
       child: const MyApp(),
     );
