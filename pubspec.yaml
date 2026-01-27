@@ -1,4 +1,4 @@
-name: roig_spaceflight_api
+name: roig_anidb_api
 description: "An Api SmartPhone App to check up to date space flight news"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.

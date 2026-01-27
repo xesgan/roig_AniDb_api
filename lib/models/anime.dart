@@ -1,4 +1,4 @@
-import 'package:roig_spaceflight_api/models/models.dart';
+import 'package:roig_anidb_api/models/models.dart';
 
 class Anime {
   final String id;

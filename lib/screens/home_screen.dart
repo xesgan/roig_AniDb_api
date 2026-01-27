@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
-import 'package:roig_spaceflight_api/widgets/widgets.dart';
+import 'package:roig_anidb_api/provider/anidb_provider.dart';
+import 'package:roig_anidb_api/widgets/widgets.dart';
 
+// Pantalla principal (Home) con estado porque lanzo cargas en initState
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -16,11 +17,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
+    // Microtask: ejecuta después de que el widget se haya montado
+    // (evita usar context “demasiado pronto” en initState)
     Future.microtask(() async {
-      final p = context.read<AniDbProvider>();
-      await p.fetchRandomRecommendationList();
-      await p.fetchHotAnime();
-      await p.fetchRandomSimilar();
+      final p = context
+          .read<AniDbProvider>(); // lee el provider sin escuchar cambios
+      await p.fetchRandomRecommendationList(); // carga carrusel principal
+      await p.fetchHotAnime(); // carga slider de “hot”
+      await p.fetchRandomSimilar(); // carga pares “similar” (si los usas en UI)
     });
   }
 
@@ -34,11 +38,14 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(onPressed: () {}, icon: const Icon(Icons.search_outlined)),
         ],
       ),
+      // Consumer: reconstruye solo este body cuando AniDbProvider notifica cambios
       body: Consumer<AniDbProvider>(
         builder: (_, p, _) {
+          // Loading principal para la lista random (tu condición actual)
           if (p.isLoadingList) {
             return const Center(child: CircularProgressIndicator());
           }
+          // Error genérico mostrado en rojo
           if (p.errorMessage != null) {
             return Center(
               child: Text(

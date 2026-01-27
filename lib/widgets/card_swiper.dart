@@ -1,8 +1,8 @@
 import 'package:card_swiper/card_swiper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:roig_spaceflight_api/models/models.dart';
-import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
+import 'package:roig_anidb_api/models/models.dart';
+import 'package:roig_anidb_api/provider/anidb_provider.dart';
 
 class CardSwiper extends StatelessWidget {
   final List<AnimePreview> items;

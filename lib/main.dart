@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:roig_spaceflight_api/provider/anidb_provider.dart';
-import 'package:roig_spaceflight_api/screens/details_screen.dart';
-import 'package:roig_spaceflight_api/screens/home_screen.dart';
+import 'package:roig_anidb_api/provider/anidb_provider.dart';
+import 'package:roig_anidb_api/screens/details_screen.dart';
+import 'package:roig_anidb_api/screens/home_screen.dart';
 
 void main() => runApp(const AppState());
 

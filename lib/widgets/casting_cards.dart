@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:roig_spaceflight_api/models/models.dart'; // donde tengas SimilarPair/SimilarImageItem
+import 'package:roig_anidb_api/models/models.dart';
 
 class CastingCards extends StatelessWidget {
   final List<SimilarPair> pairs; // <-- lo que viene del provider

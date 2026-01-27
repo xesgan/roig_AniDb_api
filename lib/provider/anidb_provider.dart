@@ -2,17 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:roig_spaceflight_api/models/models.dart';
+import 'package:roig_anidb_api/models/models.dart';
 import 'package:xml/xml.dart';
 
 import '../models/anime.dart';
 
+// Provider (estado + peticiones) para consumir AniDB y notificar a la UI
 class AniDbProvider extends ChangeNotifier {
   final String client;
   final int clientVer;
 
   AniDbProvider({required this.client, required this.clientVer});
 
+  // Listas que se pintan en la UI
   List<AnimePreview> randomList = [];
   List<AnimePreview> hotList = [];
   List<SimilarPair> similarPairs = [];
@@ -22,10 +24,10 @@ class AniDbProvider extends ChangeNotifier {
   bool isLoadingList = false;
   String? errorMessage;
 
-  // Cache por id (aid)
+  // Cache por id (aid) para no pedir lo mismo repetidamente
   final Map<int, Anime> _cache = {};
 
-  // Para no spamear AniDB (mínimo 2s entre requests)
+  // Para no spamear AniDB (mínimo 2s entre requests) (Control rate)
   DateTime _lastRequestAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Carga una lista de animes recomendados aleatoriamente(id)
@@ -35,6 +37,7 @@ class AniDbProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Construccion de la query
       final uri = Uri(
         scheme: 'http',
         host: 'api.anidb.net',
@@ -48,16 +51,20 @@ class AniDbProvider extends ChangeNotifier {
         },
       );
 
+      // Lanza request
       final res = await http.get(uri);
 
+      // Valida el estado HTTP
       if (res.statusCode != 200) {
         throw Exception('HTTP ${res.statusCode}');
       }
 
+      // Decodifica bytes -> string (evita problemas de encoding)
       final xmlStr = utf8.decode(res.bodyBytes);
       final doc = XmlDocument.parse(xmlStr);
 
-      randomList = parseRandomRecommendation(doc); // la función de arriba
+      // Convierte XML a lista de previews
+      randomList = parseRandomRecommendation(doc);
     } catch (e) {
       errorMessage = e.toString();
     } finally {
@@ -95,6 +102,7 @@ class AniDbProvider extends ChangeNotifier {
       final xmlStr = utf8.decode(res.bodyBytes);
       final doc = XmlDocument.parse(xmlStr);
 
+      // Convierte XML a lista de previews
       hotList = parseHotAnime(doc);
     } catch (e) {
       errorMessage = e.toString();
@@ -108,10 +116,12 @@ class AniDbProvider extends ChangeNotifier {
   Future<Anime?> fetchAnime(int aid, {bool force = false}) async {
     errorMessage = null;
 
+    // Cache hit (si no forzamos)
     if (!force && _cache.containsKey(aid)) {
       return _cache[aid];
     }
 
+    // Respetamos el minimo de tiempo entre respuestas
     await _throttle();
 
     isLoading = true;
@@ -132,6 +142,7 @@ class AniDbProvider extends ChangeNotifier {
         },
       );
 
+      // Pide gzip si el servidor lo soporta
       final res = await http.get(
         uri,
         headers: const {'Accept-Encoding': 'gzip'},
@@ -144,6 +155,7 @@ class AniDbProvider extends ChangeNotifier {
       final xmlStr = utf8.decode(res.bodyBytes);
       final doc = XmlDocument.parse(xmlStr);
 
+      // Parseo del XML a modelo Anime completo
       final anime = _parseAnime(doc);
 
       _cache[aid] = anime;
@@ -157,9 +169,10 @@ class AniDbProvider extends ChangeNotifier {
     }
   }
 
+  // Carga pares aleatorios "similar" (source/target con imagen)
   Future<void> fetchRandomSimilar() async {
     errorMessage = null;
-    await _throttle(); // <- tu throttle de 2 segundos
+    await _throttle();
 
     isLoading = true;
     notifyListeners();
@@ -190,6 +203,7 @@ class AniDbProvider extends ChangeNotifier {
       final xmlStr = utf8.decode(res.bodyBytes);
       final doc = XmlDocument.parse(xmlStr);
 
+      // Convierte XML a lista de SimilarPair
       similarPairs = _parseRandomSimilar(doc);
     } catch (e) {
       errorMessage = e.toString();
@@ -203,8 +217,10 @@ class AniDbProvider extends ChangeNotifier {
   // Helpers internos
   // =======================
 
+  // Getter simple de cache
   Anime? getFromCache(int aid) => _cache[aid];
 
+  // Throttle: asegura minimo 2s entre requests
   Future<void> _throttle() async {
     final now = DateTime.now();
     final diff = now.difference(_lastRequestAt);
@@ -212,16 +228,21 @@ class AniDbProvider extends ChangeNotifier {
     // AniDB: 1 request cada 2s (safe)
     const minGap = Duration(seconds: 2);
 
+    // // Si no ha pasado el tiempo mínimo, espera la diferencia
     if (diff < minGap) {
       await Future.delayed(minGap - diff);
     }
 
+    // Marca el momento de la request (post-wait)
     _lastRequestAt = DateTime.now();
   }
 
+  // Alias (mismo que getFromCache)
   Anime? getAnime(int aid) => getFromCache(aid);
 
+  // Pre-carga (prefetch) para suavizar navegacion en una lista
   void preloadForIndex(int index) {
+    // Evita indices invalidos
     if (index < 0 || index >= randomList.length) return;
 
     final aid = randomList[index].id;
@@ -231,7 +252,7 @@ class AniDbProvider extends ChangeNotifier {
       fetchAnime(aid);
     }
 
-    // Preload del siguiente (suave)
+    // Preload del siguiente para que al swipar vaya “instant”
     if (index + 1 < randomList.length) {
       final nextAid = randomList[index + 1].id;
       if (getFromCache(nextAid) == null) {
@@ -240,15 +261,19 @@ class AniDbProvider extends ChangeNotifier {
     }
   }
 
+  // Parseo de randomrecommendation -> lista de previews
   List<AnimePreview> parseRandomRecommendation(XmlDocument doc) {
     final list = <AnimePreview>[];
 
+    // AniDB devueve <anime ...> repetidos
     for (final anime in doc.findAllElements('anime')) {
       final id = int.tryParse(anime.getAttribute('id') ?? '');
       if (id == null) continue;
 
+      // Parser boolean tipo "true/false"
       bool parseBool(String? v) => (v ?? '').toLowerCase() == 'true';
 
+      // Lee el innerText de un tag si existe y no está vacío
       String? textOf(String tag) {
         final els = anime.findElements(tag);
         if (els.isEmpty) return null;
@@ -256,9 +281,11 @@ class AniDbProvider extends ChangeNotifier {
         return t.isEmpty ? null : t;
       }
 
+      // Helpers para int y DateTime desde tags
       int? intOf(String tag) => int.tryParse(textOf(tag) ?? '');
       DateTime? dateOf(String tag) => DateTime.tryParse(textOf(tag) ?? '');
 
+      // Title: aquí pillo el primero que venga
       final titleEl = anime.findElements('title').isNotEmpty
           ? anime.findElements('title').first
           : null;
@@ -282,6 +309,7 @@ class AniDbProvider extends ChangeNotifier {
         }
       }
 
+      // Construye el preview ya mapeado a tu modelo
       list.add(
         AnimePreview(
           id: id,
@@ -301,16 +329,20 @@ class AniDbProvider extends ChangeNotifier {
     return list;
   }
 
+  // Parseo de hotanime -> lista de previews
   List<AnimePreview> parseHotAnime(XmlDocument doc) {
     final list = <AnimePreview>[];
 
+    // En hotanime uso rootElement directamente
     for (final a in doc.rootElement.findElements('anime')) {
       final id = int.tryParse(a.getAttribute('id') ?? '');
       if (id == null) continue;
 
+      // restricted viene como atributo
       final restricted =
           (a.getAttribute('restricted') ?? 'false').toLowerCase() == 'true';
 
+      // Helper para leer tags hijos
       String? textOf(String tag) {
         final el = a.findElements(tag);
         if (el.isEmpty) return null;
@@ -323,7 +355,7 @@ class AniDbProvider extends ChangeNotifier {
       final episodeCount = int.tryParse(textOf('episodecount') ?? '');
       final startDate = DateTime.tryParse(textOf('startdate') ?? '');
 
-      // ratings/permanent y ratings/temporary
+      // Lee ratings/<tag> dentro de <ratings>
       double? ratingOf(String tag) {
         final ratings = a.findElements('ratings');
         if (ratings.isEmpty) return null;
@@ -349,9 +381,11 @@ class AniDbProvider extends ChangeNotifier {
     return list;
   }
 
+  // Parseo del detalle anime -> modelo Anime completo
   Anime _parseAnime(XmlDocument doc) {
     final root = doc.rootElement;
 
+    // Lee tag directo del root (primer nivel)
     String? textOf(String tag) {
       final el = root.getElement(tag);
       if (el == null) return null;
@@ -359,9 +393,11 @@ class AniDbProvider extends ChangeNotifier {
       return t.isEmpty ? null : t;
     }
 
+    // Booleans tipo "true/1"
     bool parseBool(String? v) =>
         v != null && (v.toLowerCase() == 'true' || v == '1');
 
+    // Helpers para tipos
     DateTime? parseDate(String? v) {
       if (v == null) return null;
       return DateTime.tryParse(v);
@@ -373,6 +409,7 @@ class AniDbProvider extends ChangeNotifier {
     }
 
     // --- titles ---
+    // AniDB a veces envuelve títulos en <titles>, a veces no
     final titles = <AnimeTitle>[];
     final titlesEl = root.getElement('titles');
     if (titlesEl != null) {
@@ -406,7 +443,6 @@ class AniDbProvider extends ChangeNotifier {
         out.add(
           AnimeRelation(
             id: a.getAttribute('id') ?? '',
-            // type: a.getAttribute('type'),
             title: a.innerText.trim(),
           ),
         );
@@ -426,6 +462,7 @@ class AniDbProvider extends ChangeNotifier {
     }
 
     // --- recommendations ---
+    // Recomendaciones son texto + type, y las asocias al aid actual
     final recs = <AnimeRecommendation>[];
     final recsEl = root.getElement('recommendations');
 
@@ -449,6 +486,7 @@ class AniDbProvider extends ChangeNotifier {
       }
     }
 
+    // Devuelve el modelo final mapeando campos
     return Anime(
       id: root.getAttribute('id') ?? '',
       restricted: parseBool(root.getAttribute('restricted')),
@@ -467,6 +505,7 @@ class AniDbProvider extends ChangeNotifier {
   }
 }
 
+// Parseo standalone (fuera del provider) de randomsimilar
 List<SimilarPair> _parseRandomSimilar(XmlDocument doc) {
   final list = <SimilarPair>[];
 
@@ -476,6 +515,7 @@ List<SimilarPair> _parseRandomSimilar(XmlDocument doc) {
     final tgtEl = sim.getElement('target');
     if (srcEl == null || tgtEl == null) continue;
 
+    // Convierte <source aid=".."><picture>...</picture></source> a item
     SimilarImageItem? parseItem(XmlElement el) {
       final aidStr = el.getAttribute('aid');
       final pic = el.getElement('picture')?.innerText.trim();
