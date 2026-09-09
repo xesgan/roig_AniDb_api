@@ -1,16 +1,48 @@
-# roig_spaceflight_api
+# AniDB Flutter Client
 
-A new Flutter project.
+Flutter application for browsing anime data from the AniDB HTTP API.
 
-## Getting Started
+The app provides anime discovery features such as trending titles, random recommendations, detailed information and similar anime suggestions.
 
-This project is a starting point for a Flutter application.
+## Features
 
-A few resources to get you started if this is your first Flutter project:
+- Browse trending anime
+- Discover random recommendations
+- View detailed anime information
+- Explore similar titles
+- XML parsing from the AniDB API
+- Local in-memory caching to avoid repeated requests
+- Request throttling to respect API rate limits
+- Loading and error-state handling
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Tech Stack
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- Flutter
+- Dart
+- Provider / ChangeNotifier
+- HTTP
+- XML
+
+## Structure
+
+```text
+lib/
+├── models/      API and domain models
+├── provider/    API communication and application state
+├── screens/     Main application screens
+└── widgets/     Reusable UI components
+```
+
+## API Integration
+
+The application communicates with the AniDB HTTP API and converts XML responses into Dart models used by the UI.
+
+The provider layer also handles caching, request throttling and application state.
+
+## Background
+
+This project was developed during Higher Vocational Training in Multiplatform Application Development (DAM) as practical work with Flutter, external APIs and state management.
+
+---
+
+**Elias Roig**
